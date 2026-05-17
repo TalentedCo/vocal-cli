@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	vocalconfig "github.com/TalentedCo/vocal-cli/internal/config"
 )
 
 func TestAuthSaveAndStatusJSONMasksKey(t *testing.T) {
@@ -118,5 +120,66 @@ func TestCallsCreateJSONAndIdempotency(t *testing.T) {
 	data := envelope["data"].(map[string]any)
 	if data["callId"] != "call_123" {
 		t.Fatalf("callId = %#v", data["callId"])
+	}
+}
+
+func TestAuthSaveAndLogoutUseResolvedProfileAndAPIURL(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := vocalconfig.Save(configPath, vocalconfig.File{
+		DefaultProfile: "agent",
+		Profiles: map[string]vocalconfig.ProfileConfig{
+			"agent": {APIURL: "https://profile.example/api/v1"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := ExecuteWithOptions(context.Background(), []string{"--config", configPath, "auth", "save", "--api-key-stdin", "--json"}, &Options{
+		Stdin:  strings.NewReader("sk_live_abcdef123456\n"),
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Getenv: func(string) string { return "" },
+	})
+	if code != ExitOK {
+		t.Fatalf("save exit = %d stderr=%s", code, stderr.String())
+	}
+
+	resolved, err := vocalconfig.Resolve(vocalconfig.ResolveOptions{
+		ConfigPath: configPath,
+		Getenv:     func(string) string { return "" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Profile != "agent" {
+		t.Fatalf("profile = %q", resolved.Profile)
+	}
+	if resolved.APIURL != "https://profile.example/api/v1" {
+		t.Fatalf("api url = %q", resolved.APIURL)
+	}
+	if resolved.APIKey != "sk_live_abcdef123456" {
+		t.Fatalf("api key = %q", resolved.APIKey)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = ExecuteWithOptions(context.Background(), []string{"--config", configPath, "auth", "logout", "--json"}, &Options{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Getenv: func(string) string { return "" },
+	})
+	if code != ExitOK {
+		t.Fatalf("logout exit = %d stderr=%s", code, stderr.String())
+	}
+	resolved, err = vocalconfig.Resolve(vocalconfig.ResolveOptions{
+		ConfigPath: configPath,
+		Getenv:     func(string) string { return "" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Profile != "agent" || resolved.APIKey != "" {
+		t.Fatalf("after logout = %#v", resolved)
 	}
 }

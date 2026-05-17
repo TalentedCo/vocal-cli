@@ -42,15 +42,11 @@ func newAuthSaveCommand(opts *Options) *cobra.Command {
 			if err != nil {
 				return exitError(ExitUsage, err.Error(), err)
 			}
-			apiURL := opts.APIURL
-			if apiURL == "" {
-				apiURL = vocalconfig.DefaultAPIURL
+			current, err := resolve(opts)
+			if err != nil {
+				return err
 			}
-			profile := opts.Profile
-			if profile == "" {
-				profile = vocalconfig.DefaultProfile
-			}
-			resolved, err := vocalconfig.SaveAPIKey(opts.ConfigPath, profile, apiURL, key)
+			resolved, err := vocalconfig.SaveAPIKey(opts.ConfigPath, current.Profile, current.APIURL, key)
 			if err != nil {
 				return exitError(ExitConfig, "failed to save API key", err)
 			}
@@ -87,14 +83,14 @@ func newAuthLogoutCommand(opts *Options) *cobra.Command {
 		Use:   "logout",
 		Short: "Remove the stored API key for the active profile",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			profile := opts.Profile
-			if profile == "" {
-				profile = vocalconfig.DefaultProfile
+			resolved, err := resolve(opts)
+			if err != nil {
+				return err
 			}
-			if err := vocalconfig.Logout(opts.ConfigPath, profile); err != nil {
+			if err := vocalconfig.Logout(opts.ConfigPath, resolved.Profile); err != nil {
 				return exitError(ExitConfig, "failed to remove API key", err)
 			}
-			return output.Success(opts.Stdout, opts.JSON, map[string]string{"profile": profile}, fmt.Sprintf("Removed API key for profile %q", profile))
+			return output.Success(opts.Stdout, opts.JSON, map[string]string{"profile": resolved.Profile}, fmt.Sprintf("Removed API key for profile %q", resolved.Profile))
 		},
 	}
 }
