@@ -27,6 +27,7 @@ func newCallsCommand(opts *Options) *cobra.Command {
 func newCallsCreateCommand(opts *Options) *cobra.Command {
 	var request vocalclient.CreateCallRequest
 	var idempotencyKey string
+	var webhookHeaders []string
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an outbound call",
@@ -34,6 +35,11 @@ func newCallsCreateCommand(opts *Options) *cobra.Command {
 			if strings.TrimSpace(request.PhoneNumber) == "" || strings.TrimSpace(request.CallObjective) == "" || strings.TrimSpace(request.FromName) == "" {
 				return exitError(ExitUsage, "calls create requires --phone-number, --call-objective, and --from-name", nil)
 			}
+			headers, err := parseWebhookHeaders(webhookHeaders)
+			if err != nil {
+				return exitError(ExitUsage, err.Error(), err)
+			}
+			request.WebhookHeaders = headers
 			resolved, err := resolve(opts)
 			if err != nil {
 				return err
@@ -58,8 +64,48 @@ func newCallsCreateCommand(opts *Options) *cobra.Command {
 	cmd.Flags().IntVar(&request.MaxRetries, "max-retries", 0, "maximum retries; defaults to 0 for agent safety")
 	cmd.Flags().BoolVar(&request.SkipObjectiveValidation, "skip-objective-validation", false, "skip objective completeness validation")
 	cmd.Flags().StringVar(&request.WebhookURL, "webhook-url", "", "webhook URL for final call results")
+	cmd.Flags().StringArrayVar(&webhookHeaders, "webhook-header", nil, "custom webhook header KEY=VALUE for final call results; repeatable")
 	cmd.Flags().StringVar(&idempotencyKey, "idempotency-key", "", "idempotency key sent as Idempotency-Key")
 	return cmd
+}
+
+func parseWebhookHeaders(values []string) (map[string]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+
+	headers := make(map[string]string, len(values))
+	for _, raw := range values {
+		parts := strings.SplitN(raw, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid --webhook-header %q; expected KEY=VALUE", raw)
+		}
+
+		key := strings.TrimSpace(parts[0])
+		if key == "" {
+			return nil, fmt.Errorf("invalid --webhook-header %q; header key is required", raw)
+		}
+		if !isHTTPHeaderToken(key) {
+			return nil, fmt.Errorf("invalid --webhook-header %q; header key contains invalid characters", raw)
+		}
+
+		headers[key] = strings.TrimSpace(parts[1])
+	}
+	return headers, nil
+}
+
+func isHTTPHeaderToken(value string) bool {
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case strings.ContainsRune("!#$%&'*+-.^_`|~", r):
+		default:
+			return false
+		}
+	}
+	return value != ""
 }
 
 func newCallsGetCommand(opts *Options) *cobra.Command {
