@@ -54,6 +54,21 @@ Run diagnostics:
 vocal doctor --json
 ```
 
+Request a provisional account/API key for a human owner to review:
+
+```bash
+vocal signup agent \
+  --json \
+  --non-interactive \
+  --agent-email "agent@example.com" \
+  --agent-name "Build Agent" \
+  --owner-email "owner@example.com" \
+  --project-name "ACME outbound test" \
+  --idempotency-key "owner@example.com:acme:$(date +%s)"
+```
+
+The command returns a constrained `sk_agent_...` key only on first creation when the owner email does not already have an active account. Retries with the same idempotency key return the existing request with the key masked. The human owner receives an accept/reject/revoke invite and paid or expanded usage remains locked until owner acceptance and billing setup.
+
 Create a call with explicit non-interactive flags:
 
 ```bash
@@ -83,6 +98,7 @@ vocal auth status
 vocal auth logout
 vocal status
 vocal doctor [--check-api]
+vocal signup agent --agent-email ... --owner-email ... --idempotency-key ...
 vocal calls create --phone-number ... --call-objective ... --from-name ...
 vocal calls get CALL_ID
 vocal calls list [--status STATUS] [--limit N] [--offset N]

@@ -44,6 +44,14 @@ type CreateCallRequest struct {
 	WebhookHeaders          map[string]string `json:"webhookHeaders,omitempty"`
 }
 
+type AgentSignupRequest struct {
+	AgentEmail     string `json:"agentEmail"`
+	AgentName      string `json:"agentName,omitempty"`
+	OwnerEmail     string `json:"ownerEmail"`
+	ProjectName    string `json:"projectName,omitempty"`
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
 func New(baseURL, apiKey string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
@@ -57,6 +65,10 @@ func New(baseURL, apiKey string, httpClient *http.Client) *Client {
 
 func (c *Client) CreateCall(ctx context.Context, request CreateCallRequest, idempotencyKey string) (any, error) {
 	return c.do(ctx, http.MethodPost, "/calls", request, idempotencyKey)
+}
+
+func (c *Client) CreateAgentSignup(ctx context.Context, request AgentSignupRequest) (any, error) {
+	return c.do(ctx, http.MethodPost, "/agent-signups", request, request.IdempotencyKey)
 }
 
 func (c *Client) GetCall(ctx context.Context, callID string) (any, error) {
