@@ -16,7 +16,6 @@ Confirm the binary is available:
 vocal --help
 vocal doctor --json
 vocal version --check-update
-vocal update --check
 ```
 
 ## Configure Auth
@@ -122,7 +121,6 @@ vocal auth status
 vocal auth logout
 vocal status
 vocal version [--check-update]
-vocal update [--check]
 vocal doctor [--check-api] [--check-updates]
 vocal signup agent --agent-email ... --owner-email ... --idempotency-key ...
 vocal calls create --phone-number ... --call-objective ... --from-name ... [--webhook-url URL] [--webhook-header KEY=VALUE]
@@ -168,19 +166,13 @@ Errors use:
 | `5` | VOCAL API error |
 | `6` | Network error |
 
-`auth status`, `status`, `version`, and `doctor` are safe to run in fresh environments and return structured state instead of revealing secrets. `vocal version --check-update`, `vocal update --check`, and `vocal doctor --check-updates` make a best-effort GitHub request and suggest:
+`auth status`, `status`, `version`, and `doctor` are safe to run in fresh environments and return structured state instead of revealing secrets. `vocal version --check-update` and `vocal doctor --check-updates` make a best-effort GitHub request and suggest:
 
 ```bash
 go install github.com/TalentedCo/vocal-cli/cmd/vocal@latest
 ```
 
-when a newer default-branch build is available. To install the newest build directly, run:
-
-```bash
-vocal update
-```
-
-`vocal update` uses the same Go toolchain install path until VOCAL publishes platform release binaries.
+when a newer default-branch build is available. They never self-update the binary.
 
 ## Idempotency
 

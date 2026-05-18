@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	vocalconfig "github.com/TalentedCo/vocal-cli/internal/config"
-	"github.com/spf13/cobra"
 )
 
 func TestAuthSaveAndStatusJSONMasksKey(t *testing.T) {
@@ -352,82 +351,6 @@ func TestVersionCheckUpdateSuggestsInstall(t *testing.T) {
 	}
 	if data["update_command"] != updateInstallCommand {
 		t.Fatalf("update_command = %#v", data["update_command"])
-	}
-}
-
-func TestUpdateCheckReportsNewerCLI(t *testing.T) {
-	restoreVersion := setVersionTestData("0.1.0", "1111111111111111111111111111111111111111", "")
-	defer restoreVersion()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"sha":"2222222222222222222222222222222222222222"}`))
-	}))
-	defer server.Close()
-	updateCheckURL = server.URL
-
-	var stdout, stderr bytes.Buffer
-	code := ExecuteWithOptions(context.Background(), []string{"--json", "update", "--check"}, &Options{
-		Stdout:     &stdout,
-		Stderr:     &stderr,
-		HTTPClient: server.Client(),
-		Getenv:     func(string) string { return "" },
-	})
-	if code != ExitOK {
-		t.Fatalf("exit = %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
-	}
-	var envelope map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
-		t.Fatal(err)
-	}
-	data := envelope["data"].(map[string]any)
-	if data["update_available"] != true || data["check_only"] != true {
-		t.Fatalf("update check data = %#v", data)
-	}
-	if data["update_command"] != updateInstallCommand {
-		t.Fatalf("update_command = %#v", data["update_command"])
-	}
-}
-
-func TestUpdateInstallsWhenNewerCLIAvailable(t *testing.T) {
-	restoreVersion := setVersionTestData("0.1.0", "1111111111111111111111111111111111111111", "")
-	defer restoreVersion()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"sha":"2222222222222222222222222222222222222222"}`))
-	}))
-	defer server.Close()
-	updateCheckURL = server.URL
-
-	called := false
-	oldRunner := runUpdateInstall
-	runUpdateInstall = func(cmd *cobra.Command) error {
-		called = true
-		return nil
-	}
-	defer func() { runUpdateInstall = oldRunner }()
-
-	var stdout, stderr bytes.Buffer
-	code := ExecuteWithOptions(context.Background(), []string{"--json", "update"}, &Options{
-		Stdout:     &stdout,
-		Stderr:     &stderr,
-		HTTPClient: server.Client(),
-		Getenv:     func(string) string { return "" },
-	})
-	if code != ExitOK {
-		t.Fatalf("exit = %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
-	}
-	if !called {
-		t.Fatal("expected update installer to run")
-	}
-	var envelope map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
-		t.Fatal(err)
-	}
-	data := envelope["data"].(map[string]any)
-	if data["installed"] != true {
-		t.Fatalf("installed = %#v", data["installed"])
 	}
 }
 

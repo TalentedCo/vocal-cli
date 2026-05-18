@@ -88,7 +88,6 @@ func NewRootCommand(opts *Options) *cobra.Command {
 	cmd.AddCommand(newAuthCommand(opts))
 	cmd.AddCommand(newStatusCommand(opts))
 	cmd.AddCommand(newVersionCommand(opts))
-	cmd.AddCommand(newUpdateCommand(opts))
 	cmd.AddCommand(newDoctorCommand(opts))
 	cmd.AddCommand(newCallsCommand(opts))
 	cmd.AddCommand(newSignupCommand(opts))
