@@ -67,6 +67,9 @@ func currentVersionInfo() versionInfo {
 		if (info.Version == "" || info.Version == "dev") && buildInfo.Main.Version != "" && buildInfo.Main.Version != "(devel)" {
 			info.Version = buildInfo.Main.Version
 		}
+		if info.Commit == "" {
+			info.Commit = commitFromModuleVersion(buildInfo.Main.Version)
+		}
 		for _, setting := range buildInfo.Settings {
 			switch setting.Key {
 			case "vcs.revision":
@@ -85,6 +88,26 @@ func currentVersionInfo() versionInfo {
 		info.Commit = "unknown"
 	}
 	return info
+}
+
+func commitFromModuleVersion(moduleVersion string) string {
+	parts := strings.Split(strings.TrimSpace(moduleVersion), "-")
+	if len(parts) < 3 {
+		return ""
+	}
+	candidate := parts[len(parts)-1]
+	if len(candidate) < 12 {
+		return ""
+	}
+	for _, r := range candidate {
+		switch {
+		case r >= '0' && r <= '9':
+		case r >= 'a' && r <= 'f':
+		default:
+			return ""
+		}
+	}
+	return candidate
 }
 
 func fetchLatestCommit(ctx context.Context, client *http.Client) (string, error) {

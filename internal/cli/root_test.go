@@ -354,6 +354,16 @@ func TestVersionCheckUpdateSuggestsInstall(t *testing.T) {
 	}
 }
 
+func TestCommitFromModuleVersionParsesGoInstallPseudoVersion(t *testing.T) {
+	commit := commitFromModuleVersion("v0.0.0-20260518031508-e99c8d67bb12")
+	if commit != "e99c8d67bb12" {
+		t.Fatalf("commit = %q", commit)
+	}
+	if commitFromModuleVersion("(devel)") != "" {
+		t.Fatal("expected devel version to have no parsed commit")
+	}
+}
+
 func TestDoctorCheckUpdatesReportsNewerCLI(t *testing.T) {
 	restoreVersion := setVersionTestData("0.1.0", "1111111111111111111111111111111111111111", "")
 	defer restoreVersion()
