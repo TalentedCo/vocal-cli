@@ -50,6 +50,50 @@ func TestCreateCallSendsAuthAndIdempotencyHeaders(t *testing.T) {
 	}
 }
 
+func TestCreateAgentSignupSendsIdempotencyAndNoAuth(t *testing.T) {
+	var gotAuth, gotIdempotency string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotIdempotency = r.Header.Get("Idempotency-Key")
+		if r.URL.Path != "/agent-signups" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		var payload AgentSignupRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.AgentEmail != "agent@example.com" || payload.OwnerEmail != "owner@example.com" {
+			t.Fatalf("payload = %#v", payload)
+		}
+		if payload.IdempotencyKey != "idem-agent-123" {
+			t.Fatalf("payload idempotency = %q", payload.IdempotencyKey)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"req_123","apiKey":"sk_agent_secret","freeCallLimit":3}`))
+	}))
+	defer server.Close()
+
+	c := New(server.URL, "", server.Client())
+	data, err := c.CreateAgentSignup(context.Background(), AgentSignupRequest{
+		AgentEmail:     "agent@example.com",
+		OwnerEmail:     "owner@example.com",
+		IdempotencyKey: "idem-agent-123",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "" {
+		t.Fatalf("authorization = %q", gotAuth)
+	}
+	if gotIdempotency != "idem-agent-123" {
+		t.Fatalf("idempotency = %q", gotIdempotency)
+	}
+	payload := data.(map[string]any)
+	if payload["id"] != "req_123" {
+		t.Fatalf("id = %#v", payload["id"])
+	}
+}
+
 func TestAPIErrorDecodesMessage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
