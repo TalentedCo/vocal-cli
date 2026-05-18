@@ -23,6 +23,12 @@ func TestCreateCallSendsAuthAndIdempotencyHeaders(t *testing.T) {
 		if payload.MaxRetries != 0 {
 			t.Fatalf("max retries = %d", payload.MaxRetries)
 		}
+		if payload.WebhookURL != "https://example.com/webhooks/vocal" {
+			t.Fatalf("webhook url = %q", payload.WebhookURL)
+		}
+		if payload.WebhookHeaders["Authorization"] != "Bearer webhook-secret" {
+			t.Fatalf("webhook headers = %#v", payload.WebhookHeaders)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"callId":"call_123","status":"initiated"}`))
 	}))
@@ -34,6 +40,10 @@ func TestCreateCallSendsAuthAndIdempotencyHeaders(t *testing.T) {
 		CallObjective: "Schedule a demo",
 		FromName:      "Sarah",
 		MaxRetries:    0,
+		WebhookURL:    "https://example.com/webhooks/vocal",
+		WebhookHeaders: map[string]string{
+			"Authorization": "Bearer webhook-secret",
+		},
 	}, "idem-123")
 	if err != nil {
 		t.Fatal(err)

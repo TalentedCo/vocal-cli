@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -13,6 +14,7 @@ import (
 type doctorResult struct {
 	Profile string        `json:"profile"`
 	APIURL  string        `json:"api_url"`
+	Version versionInfo   `json:"version"`
 	Checks  []doctorCheck `json:"checks"`
 }
 
@@ -24,6 +26,7 @@ type doctorCheck struct {
 
 func newDoctorCommand(opts *Options) *cobra.Command {
 	var checkAPI bool
+	var checkUpdates bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run local diagnostics for agent automation",
@@ -32,11 +35,14 @@ func newDoctorCommand(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			versionData := currentVersionInfo()
 			result := doctorResult{
 				Profile: resolved.Profile,
 				APIURL:  resolved.APIURL,
+				Version: versionData,
 				Checks:  localDoctorChecks(resolved.ConfigPath, resolved.APIURL, resolved.APIKey != ""),
 			}
+			result.Checks = append(result.Checks, doctorCheck{Name: "cli_version", Status: "pass", Message: versionSummary(versionData)})
 			if checkAPI {
 				check := doctorCheck{Name: "api_auth", Status: "pass", Message: "API key authenticated"}
 				if resolved.APIKey == "" {
@@ -49,12 +55,36 @@ func newDoctorCommand(opts *Options) *cobra.Command {
 				}
 				result.Checks = append(result.Checks, check)
 			}
+			if checkUpdates {
+				result.Checks = append(result.Checks, doctorUpdateCheck(cmd.Context(), opts, &result.Version))
+			}
 			summary := "Doctor completed"
 			return output.Success(opts.Stdout, opts.JSON, result, summary)
 		},
 	}
 	cmd.Flags().BoolVar(&checkAPI, "check-api", false, "make a network request to verify API authentication")
+	cmd.Flags().BoolVar(&checkUpdates, "check-updates", false, "make a network request to check for a newer CLI build")
 	return cmd
+}
+
+func doctorUpdateCheck(ctx context.Context, opts *Options, info *versionInfo) doctorCheck {
+	latestCommit, err := fetchLatestCommit(ctx, httpClient(opts))
+	if err != nil {
+		return doctorCheck{Name: "cli_update", Status: "warn", Message: "Update check failed: " + err.Error()}
+	}
+
+	applyLatestCommit(info, latestCommit)
+	if info.UpdateAvailable {
+		return doctorCheck{
+			Name:    "cli_update",
+			Status:  "warn",
+			Message: fmt.Sprintf("Newer CLI available at %s; run %s", shortCommit(latestCommit), updateInstallCommand),
+		}
+	}
+	if info.Commit == "unknown" {
+		return doctorCheck{Name: "cli_update", Status: "warn", Message: fmt.Sprintf("Latest main is %s; current build commit is unknown", shortCommit(latestCommit))}
+	}
+	return doctorCheck{Name: "cli_update", Status: "pass", Message: fmt.Sprintf("CLI is current with latest checked commit %s", shortCommit(latestCommit))}
 }
 
 func localDoctorChecks(configPath, apiURL string, hasKey bool) []doctorCheck {

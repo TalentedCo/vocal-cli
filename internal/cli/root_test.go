@@ -123,6 +123,71 @@ func TestCallsCreateJSONAndIdempotency(t *testing.T) {
 	}
 }
 
+func TestCallsCreateWebhookHeaders(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	var payload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"callId":"call_123","status":"initiated"}`))
+	}))
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := ExecuteWithOptions(context.Background(), []string{
+		"--config", configPath,
+		"--api-url", server.URL,
+		"--api-key", "sk_test_123",
+		"--json",
+		"calls", "create",
+		"--phone-number", "+14155550123",
+		"--call-objective", "Schedule a demo",
+		"--from-name", "Sarah",
+		"--webhook-url", "https://example.com/webhooks/vocal",
+		"--webhook-header", "Authorization=Bearer webhook-secret",
+		"--webhook-header", "X-Trace-ID=abc=123",
+	}, &Options{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Getenv: func(string) string { return "" },
+	})
+	if code != ExitOK {
+		t.Fatalf("exit = %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if payload["webhookUrl"] != "https://example.com/webhooks/vocal" {
+		t.Fatalf("webhookUrl = %#v", payload["webhookUrl"])
+	}
+	headers := payload["webhookHeaders"].(map[string]any)
+	if headers["Authorization"] != "Bearer webhook-secret" || headers["X-Trace-ID"] != "abc=123" {
+		t.Fatalf("webhookHeaders = %#v", headers)
+	}
+}
+
+func TestCallsCreateRejectsMalformedWebhookHeader(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := ExecuteWithOptions(context.Background(), []string{
+		"--api-key", "sk_test_123",
+		"--json",
+		"calls", "create",
+		"--phone-number", "+14155550123",
+		"--call-objective", "Schedule a demo",
+		"--from-name", "Sarah",
+		"--webhook-header", "Authorization",
+	}, &Options{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Getenv: func(string) string { return "" },
+	})
+	if code != ExitUsage {
+		t.Fatalf("exit = %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid --webhook-header") {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+}
+
 func TestSignupAgentJSONAndIdempotency(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	var gotAuth, gotIdempotency string
@@ -252,5 +317,101 @@ func TestAuthSaveAndLogoutUseResolvedProfileAndAPIURL(t *testing.T) {
 	}
 	if resolved.Profile != "agent" || resolved.APIKey != "" {
 		t.Fatalf("after logout = %#v", resolved)
+	}
+}
+
+func TestVersionCheckUpdateSuggestsInstall(t *testing.T) {
+	restoreVersion := setVersionTestData("0.1.0", "1111111111111111111111111111111111111111", "2026-05-01T00:00:00Z")
+	defer restoreVersion()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"sha":"2222222222222222222222222222222222222222"}`))
+	}))
+	defer server.Close()
+	updateCheckURL = server.URL
+
+	var stdout, stderr bytes.Buffer
+	code := ExecuteWithOptions(context.Background(), []string{"--json", "version", "--check-update"}, &Options{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		HTTPClient: server.Client(),
+		Getenv:     func(string) string { return "" },
+	})
+	if code != ExitOK {
+		t.Fatalf("exit = %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	data := envelope["data"].(map[string]any)
+	if data["update_available"] != true {
+		t.Fatalf("update_available = %#v", data["update_available"])
+	}
+	if data["update_command"] != updateInstallCommand {
+		t.Fatalf("update_command = %#v", data["update_command"])
+	}
+}
+
+func TestCommitFromModuleVersionParsesGoInstallPseudoVersion(t *testing.T) {
+	commit := commitFromModuleVersion("v0.0.0-20260518031508-e99c8d67bb12")
+	if commit != "e99c8d67bb12" {
+		t.Fatalf("commit = %q", commit)
+	}
+	if commitFromModuleVersion("(devel)") != "" {
+		t.Fatal("expected devel version to have no parsed commit")
+	}
+}
+
+func TestDoctorCheckUpdatesReportsNewerCLI(t *testing.T) {
+	restoreVersion := setVersionTestData("0.1.0", "1111111111111111111111111111111111111111", "")
+	defer restoreVersion()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"sha":"2222222222222222222222222222222222222222"}`))
+	}))
+	defer server.Close()
+	updateCheckURL = server.URL
+
+	var stdout, stderr bytes.Buffer
+	code := ExecuteWithOptions(context.Background(), []string{"--config", filepath.Join(t.TempDir(), "config.json"), "--json", "doctor", "--check-updates"}, &Options{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		HTTPClient: server.Client(),
+		Getenv:     func(string) string { return "" },
+	})
+	if code != ExitOK {
+		t.Fatalf("exit = %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	data := envelope["data"].(map[string]any)
+	checks := data["checks"].([]any)
+	for _, rawCheck := range checks {
+		check := rawCheck.(map[string]any)
+		if check["name"] == "cli_update" {
+			if check["status"] != "warn" || !strings.Contains(check["message"].(string), updateInstallCommand) {
+				t.Fatalf("cli_update check = %#v", check)
+			}
+			return
+		}
+	}
+	t.Fatalf("cli_update check missing: %#v", checks)
+}
+
+func setVersionTestData(testVersion, testCommit, testDate string) func() {
+	oldVersion, oldCommit, oldDate, oldURL := version, commit, buildDate, updateCheckURL
+	version = testVersion
+	commit = testCommit
+	buildDate = testDate
+	return func() {
+		version = oldVersion
+		commit = oldCommit
+		buildDate = oldDate
+		updateCheckURL = oldURL
 	}
 }

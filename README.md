@@ -15,6 +15,7 @@ Confirm the binary is available:
 ```bash
 vocal --help
 vocal doctor --json
+vocal version --check-update
 ```
 
 ## Configure Auth
@@ -80,7 +81,9 @@ vocal calls create \
   --from-name "Sarah from ABC Corp" \
   --recipient-name "John Smith" \
   --call-objective "Schedule a 30-minute Zoom demo. Sarah is available Tuesday 2-5pm ET or Wednesday 10am-2pm ET. Send the invite to sarah@example.com." \
-  --max-retries 0
+  --max-retries 0 \
+  --webhook-url "https://example.com/webhooks/vocal" \
+  --webhook-header "Authorization=Bearer ${VOCAL_WEBHOOK_SECRET}"
 ```
 
 Inspect and stream status:
@@ -90,6 +93,26 @@ vocal calls get CALL_ID --json
 vocal calls stream CALL_ID --json
 ```
 
+### Receive Final Webhook Results
+
+When `--webhook-url` is set, VOCAL sends a final `call.completed` POST after the call ends. Use repeatable `--webhook-header KEY=VALUE` flags to attach caller-provided auth headers to that callback:
+
+```bash
+vocal calls create \
+  --json \
+  --non-interactive \
+  --idempotency-key "agent-run-$(date +%s)" \
+  --phone-number "+14155551234" \
+  --from-name "Sarah from ABC Corp" \
+  --call-objective "Schedule a 30-minute Zoom demo. Sarah is available Tuesday 2-5pm ET or Wednesday 10am-2pm ET." \
+  --max-retries 0 \
+  --webhook-url "https://example.com/webhooks/vocal" \
+  --webhook-header "Authorization=Bearer ${VOCAL_WEBHOOK_SECRET}" \
+  --webhook-header "X-Workflow-ID=agent-run-123"
+```
+
+Webhook headers are sent to your receiver as provided. Keep shared secrets in environment variables or your secret store, not in shell history or checked-in scripts.
+
 ## Commands
 
 ```text
@@ -97,9 +120,10 @@ vocal auth save --api-key-stdin|--api-key-file PATH|--api-key VALUE
 vocal auth status
 vocal auth logout
 vocal status
-vocal doctor [--check-api]
+vocal version [--check-update]
+vocal doctor [--check-api] [--check-updates]
 vocal signup agent --agent-email ... --owner-email ... --idempotency-key ...
-vocal calls create --phone-number ... --call-objective ... --from-name ...
+vocal calls create --phone-number ... --call-objective ... --from-name ... [--webhook-url URL] [--webhook-header KEY=VALUE]
 vocal calls get CALL_ID
 vocal calls list [--status STATUS] [--limit N] [--offset N]
 vocal calls stream CALL_ID
@@ -142,7 +166,13 @@ Errors use:
 | `5` | VOCAL API error |
 | `6` | Network error |
 
-`auth status`, `status`, and `doctor` are safe to run in fresh environments and return structured state instead of revealing secrets.
+`auth status`, `status`, `version`, and `doctor` are safe to run in fresh environments and return structured state instead of revealing secrets. `vocal version --check-update` and `vocal doctor --check-updates` make a best-effort GitHub request and suggest:
+
+```bash
+go install github.com/TalentedCo/vocal-cli/cmd/vocal@latest
+```
+
+when a newer default-branch build is available. They never self-update the binary.
 
 ## Idempotency
 
